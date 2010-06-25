@@ -15,18 +15,14 @@
 # limitations under the License.
 #
 
-"""SQlite-based stub for the Python datastore API.
+"""MySQL-based stub for the Python datastore API.
 
-Entities are stored in an sqlite database in a similar fashion to the production
+Entities are stored in a MySQL database in a similar fashion to the production
 datastore.
 
 Transactions are serialized through __tx_lock. Each transaction acquires it
 when it begins and releases it when it commits or rolls back.
 """
-
-
-
-
 
 
 import array
@@ -295,24 +291,18 @@ class DatastoreMySQLStub(apiproxy_stub.APIProxyStub):
       DELETED: frozenset((ERROR,)),
   }
 
-  READ_ERROR_MSG = ('Data in %s is corrupt or a different version. '
-                    'Try running with the --clear_datastore flag.\n%r')
-
   def __init__(self,
                app_id,
-               datastore_file,
+               database_info_dict,
                require_indexes=False,
                verbose=False,
                service_name='datastore_v3',
                trusted=False):
     """Constructor.
 
-    Initializes the SQLite database if necessary.
-
     Args:
       app_id: string
-      datastore_file: string, path to sqlite database. Use None to create an
-          in-memory database.
+      database_info_dict: dictionary with connection information.
       require_indexes: bool, default False. If True, composite indexes must
           exist in index.yaml for queries that need them.
       verbose: bool, default False. If True, logs all select statements.
@@ -324,7 +314,7 @@ class DatastoreMySQLStub(apiproxy_stub.APIProxyStub):
 
     assert isinstance(app_id, basestring) and app_id
     self.__app_id = app_id
-    self.__datastore_file = datastore_file
+    self.__database_info_dict = database_info_dict
     self.SetTrusted(trusted)
 
     self.__tx_actions = []
@@ -335,8 +325,7 @@ class DatastoreMySQLStub(apiproxy_stub.APIProxyStub):
     self.__id_map = {}
     self.__id_lock = threading.Lock()
 
-    self.__connection_dict = {"host":"127.0.0.1","user":"root","passwd":"","db":""}
-    self.__connection = MySQLdb.connect(**self.__connection_dict)
+    self.__connection = MySQLdb.connect(**database_info_dict)
     self.__connection_lock = threading.RLock()
     self.__current_transaction = None
     self.__next_tx_handle = 1
@@ -357,9 +346,8 @@ class DatastoreMySQLStub(apiproxy_stub.APIProxyStub):
 
     try:
       self.__Init()
-    except Exception, e: #TODO:sqlite3.DatabaseError
-      raise datastore_errors.InternalError(self.READ_ERROR_MSG %
-                                           (self.__datastore_file, e))
+    except Exception, e:
+      raise datastore_errors.InternalError('%s' % e)
 
   def __Init(self):
     cursor = self.__connection.cursor()
@@ -382,11 +370,13 @@ class DatastoreMySQLStub(apiproxy_stub.APIProxyStub):
   def Clear(self):
     """Clears the datastore."""
     conn = self.__GetConnection(None)
+    cursor = conn.cursor()
     try:
-      c = conn.execute(
-          "SELECT tbl_name FROM sqlite_master WHERE type = 'table'")
-      for row in c.fetchall():
-        conn.execute('DROP TABLE %s' % row)
+      cursor.execute(
+          "SELECT TABLE_NAME FROM information_schema.Tables "
+          "WHERE TABLE_SCHEMA='%s';" % self.__database_info_dict['db'])
+      for row in [v[0] for v in cursor.fetchall()]:
+        cursor.execute('DROP TABLE %s' % row)
       conn.commit()
     finally:
       self.__ReleaseConnection(conn, None)
@@ -719,7 +709,7 @@ class DatastoreMySQLStub(apiproxy_stub.APIProxyStub):
     """Allocates IDs.
 
     Args:
-      conn: An Sqlite connection object.
+      conn: A MySQL connection object.
       prefix: A table namespace prefix.
       size: Number of IDs to allocate.
     Returns:
