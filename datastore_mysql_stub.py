@@ -275,7 +275,7 @@ class QueryCursor(object):
 class DatastoreMySQLStub(apiproxy_stub.APIProxyStub):
   """Persistent stub for the Python datastore API.
 
-  Stores all entities in a MySQL database. A DatastoreMySQLStub instance
+  Stores all entities in an SQLite database. A DatastoreMySQLStub instance
   handles a single app's data.
   """
 
@@ -1337,7 +1337,7 @@ class DatastoreMySQLStub(apiproxy_stub.APIProxyStub):
             schema.kind_list().append(kind_pb)
           kind = row[0].encode('utf-8')
           kind_pb = entity_pb.EntityProto()
-          kind_pb.mutable_key().set_app('')
+          kind_pb.mutable_key().set_app(req.app())
           kind_pb.mutable_key().mutable_path().add_element().set_type(kind)
           kind_pb.mutable_entity_group()
 
