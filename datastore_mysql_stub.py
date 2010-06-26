@@ -108,12 +108,12 @@ CREATE TABLE IF NOT EXISTS IdSeq (
 """]
 
 _NAMESPACE_SCHEMA = ["""
-CREATE TABLE %(prefix)s_Entities (
+CREATE TABLE IF NOT EXISTS %(prefix)s_Entities (
   __path__ VARCHAR(255) NOT NULL PRIMARY KEY,
   kind VARCHAR(255) NOT NULL,
   entity LONGBLOB NOT NULL);
 ""","""
-CREATE TABLE %(prefix)s_EntitiesByProperty (
+CREATE TABLE IF NOT EXISTS %(prefix)s_EntitiesByProperty (
   kind VARCHAR(255) NOT NULL,
   name VARCHAR(255) NOT NULL,
   value LONGBLOB NOT NULL,
@@ -318,6 +318,9 @@ class DatastoreMySQLStub(apiproxy_stub.APIProxyStub):
     self.SetTrusted(trusted)
 
     self.__tx_actions = []
+    self.__transactions = {}
+    self.__inside_tx = False
+    self.__tx_lock = threading.Lock()
 
     self.__require_indexes = require_indexes
     self.__verbose = verbose
@@ -381,6 +384,8 @@ class DatastoreMySQLStub(apiproxy_stub.APIProxyStub):
     finally:
       self.__ReleaseConnection(conn, None)
 
+    self.__transactions = {}
+    self.__inside_tx = False
     self.__namespaces = set()
     self.__indexes = {}
     self.__cursors = {}
@@ -583,7 +588,10 @@ class DatastoreMySQLStub(apiproxy_stub.APIProxyStub):
     format_args = {'app_id': app_id, 'name_space': name_space, 'prefix': prefix}
     cursor = conn.cursor()
     for sql_command in _NAMESPACE_SCHEMA:
+      try:
         cursor.execute(sql_command % format_args)
+      except MySQLdb.IntegrityError, e:
+        logging.warn(str(e))
     conn.commit()
 
   def __WriteIndexData(self, conn, app):
@@ -735,17 +743,72 @@ class DatastoreMySQLStub(apiproxy_stub.APIProxyStub):
 
     return ret
 
+  def __AcquireLockForEntityGroup(self, conn, entity_group='', timeout=30):
+    """Acquire a lock for a specified entity group.
+
+    Args:
+      conn: A MySQL connection.
+      entity_group: An entity group.
+      timeout: Number of seconds till a lock expires.
+    """
+    cursor = conn.cursor()
+    lock_str = self.__app_id + '_' + entity_group
+    cursor.execute("SELECT GET_LOCK('%s', %i);" % (lock_str, timeout))
+    conn.commit()
+
+  def __ReleaseLockForEntityGroup(self, conn, entity_group=''):
+    """Release transaction lock if present.
+
+    Args:
+      conn: A MySQL connection.
+      entity_group: An entity group.
+    """
+    cursor = conn.cursor()
+    lock_str = self.__app_id + '_' + entity_group
+    cursor.execute("SELECT RELEASE_LOCK('%s');" % lock_str)
+    conn.commit()
+
+  @staticmethod
+  def __ExtractEntityGroupFromKeys(keys):
+    """Extracts entity group."""
+
+    types = set([k.path().element_list()[0].type() for k in keys])
+    assert len(types) == 1
+
+    return types.pop()
+
   def MakeSyncCall(self, service, call, request, response):
     """The main RPC entry point. service must be 'datastore_v3'."""
+
     self.AssertPbIsInitialized(request)
-#    try:
-    apiproxy_stub.APIProxyStub.MakeSyncCall(self, service, call, request,
-                                              response)
-#    except Exception, e: #TODO: sqlite3.OperationalError
-#      if e.args[0] == 'database is locked':
-#        raise datastore_errors.Timeout('Database is locked.')
-#      else:
-#        raise
+
+    if call in ('Put', 'Get', 'Delete'):
+      if call == 'Put':
+        keys = [e.key() for e in request.entity_list()]
+      elif call in ('Get', 'Delete'):
+        keys = request.key_list()
+      entity_group = self.__ExtractEntityGroupFromKeys(keys)
+      if request.has_transaction():
+        if (request.transaction() in self.__transactions
+            and not self.__inside_tx):
+          self.__inside_tx = True
+          self.__transactions[request.transaction()] = entity_group
+          self.__AcquireLockForEntityGroup(self.__connection, entity_group)
+
+    super(DatastoreMySQLStub, self).MakeSyncCall(
+      service, call, request, response)
+
+    if call in ('Put', 'Delete'):
+      if not request.has_transaction():
+        self.__ReleaseLockForEntityGroup(self.__connection, entity_group)
+
+    if call == 'Commit':
+      self.__ReleaseLockForEntityGroup(self.__connection,
+                                       self.__transactions[request])
+      del self.__transactions[request]
+      self.__inside_tx = False
+      self.__tx_lock.release()
+
     self.AssertPbIsInitialized(response)
 
   def AssertPbIsInitialized(self, pb):
@@ -1255,6 +1318,9 @@ class DatastoreMySQLStub(apiproxy_stub.APIProxyStub):
     transaction.set_app(request.app())
     transaction.set_handle(handle)
     self.__current_transaction = handle
+    assert transaction not in self.__transactions
+    self.__transactions[transaction] = None
+    self.__tx_lock.acquire()
 
   def _Dynamic_AddActions(self, request, _):
 
