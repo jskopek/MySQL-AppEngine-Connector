@@ -802,7 +802,7 @@ class DatastoreMySQLStub(apiproxy_stub.APIProxyStub):
       if not request.has_transaction():
         self.__ReleaseLockForEntityGroup(self.__connection, entity_group)
 
-    if call == 'Commit':
+    if call in ('Commit', 'Rollback'):
       self.__ReleaseLockForEntityGroup(self.__connection,
                                        self.__transactions[request])
       del self.__transactions[request]
