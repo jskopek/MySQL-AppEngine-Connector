@@ -390,6 +390,7 @@ class DatastoreMySQLStub(apiproxy_stub.APIProxyStub):
     self.__indexes = {}
     self.__cursors = {}
     self.__query_history = {}
+    self.__id_map = {}
 
     self.__Init()
 
@@ -437,15 +438,31 @@ class DatastoreMySQLStub(apiproxy_stub.APIProxyStub):
 
   @staticmethod
   def __EncodeIndexPB(pb):
+    def _encode_path(pb):
+      path = []
+      for e in pb.element_list():
+        if e.has_name():
+          id = e.name()
+        elif e.has_id():
+          id = str(e.id()).zfill(10)
+        path.append('%s\x08%s' % (e.type(), id))
+      val = '\t'.join(path)
+      return val
+
     if isinstance(pb, entity_pb.PropertyValue) and pb.has_uservalue():
       userval = entity_pb.PropertyValue()
       userval.mutable_uservalue().set_email(pb.uservalue().email())
       userval.mutable_uservalue().set_auth_domain(pb.uservalue().auth_domain())
       userval.mutable_uservalue().set_gaiaid(0)
       pb = userval
+
     encoder = sortable_pb_encoder.Encoder()
     pb.Output(encoder)
-    return base64.b64encode(buffer(encoder.buffer().tostring()))
+
+    if isinstance(pb, entity_pb.PropertyValue):
+      return buffer(encoder.buffer().tostring())
+
+    return _encode_path(pb)
 
   @staticmethod
   def __AddQueryParam(params, param):
