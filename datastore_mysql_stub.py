@@ -445,8 +445,8 @@ class DatastoreMySQLStub(apiproxy_stub.APIProxyStub):
           id = e.name()
         elif e.has_id():
           id = str(e.id()).zfill(10)
-        path.append('%s\x08%s' % (e.type(), id))
-      val = '\t'.join(path)
+        path.append('%s:%s' % (e.type(), id))
+      val = '!'.join(path)
       return val
 
     if isinstance(pb, entity_pb.PropertyValue) and pb.has_uservalue():
