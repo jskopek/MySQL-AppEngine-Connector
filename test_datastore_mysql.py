@@ -380,14 +380,14 @@ class DatastoreMySQLTestCase(DatastoreMySQLTestCaseBase):
             [planet.name for planet in query.run()]
         )
 
-        query = Planet.all().filter('distance >', 100).order('-distance')
+        query = Planet.all().filter('distance >', 100.0).order('-distance')
 
         self.assertEqual(
             ['Saturn', 'Mars'],
             [planet.name for planet in query.run()]
         )
 
-        query = Planet.all().filter('distance <=', 93).order('distance')
+        query = Planet.all().filter('distance <=', 93.0).order('distance')
 
         self.assertEqual(
             ['Mercury', 'Venus', 'Earth'],
@@ -396,7 +396,7 @@ class DatastoreMySQLTestCase(DatastoreMySQLTestCaseBase):
 
         query = (Planet.all()
             .filter('distance >', 80.0)
-            .filter('distance <', 150)
+            .filter('distance <', 150.0)
             .order('distance'))
 
         self.assertEqual(
@@ -642,7 +642,7 @@ class DatastoreMySQLTestCase(DatastoreMySQLTestCaseBase):
             datastore_types.GeoPt(52.518000000000001, 13.407999999999999))
         self.assertEqual(1, query.count())
 
-        query = Note.all().filter('location =', "52.518,13.408")
+        query = Note.all().filter('location =', db.GeoPt("52.518,13.408"))
         self.assertEqual(1, query.count())
 
     def testQueriesWithLimit(self):
