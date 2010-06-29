@@ -717,6 +717,40 @@ class DatastoreMySQLTestCase(DatastoreMySQLTestCaseBase):
         query = Note.all().filter('location =', db.GeoPt("52.518,13.408"))
         self.assertEqual(1, query.count())
 
+    def testDerivedProperty(self):
+        """Query by derived property."""
+
+        class LowerCaseProperty(db.Property):
+            """A convenience class for generating lower-cased fields."""
+
+            def __init__(self, property, *args, **kwargs):
+                """Constructor.
+ 
+                Args:
+                    property: The property to lower-case.
+                """
+                super(LowerCaseProperty, self).__init__(*args, **kwargs)
+                self.property = property
+
+            def __get__(self, model_instance, model_class):
+                return self.property.__get__(
+                    model_instance, model_class).lower()
+ 
+            def __set__(self, model_instance, value):
+                raise db.DerivedPropertyError(
+                    "Cannot assign to a DerivedProperty")
+
+        class TestModel(db.Model):
+            contents = db.StringProperty(required=True)
+            lowered_contents = LowerCaseProperty(contents)
+
+        TestModel(contents='Foo Bar').put()
+
+        query = db.GqlQuery(
+            "SELECT * FROM TestModel WHERE lowered_contents = :1", 'foo bar')
+
+        self.assertEqual('Foo Bar', query.get().contents)
+
     def testQueriesWithLimit(self):
         """Retrieves a limited number of results."""
 
