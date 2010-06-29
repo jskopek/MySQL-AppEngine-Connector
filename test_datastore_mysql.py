@@ -15,12 +15,14 @@
 # limitations under the License.
 """Unit tests for the Datastore MySQL stub."""
 
+from google.appengine.api import apiproxy_stub
 from google.appengine.api import apiproxy_stub_map
 from google.appengine.api import datastore
 from google.appengine.api import datastore_admin
 from google.appengine.api import datastore_errors
 from google.appengine.api import datastore_types
 from google.appengine.api import users
+from google.appengine.api.labs import taskqueue
 from google.appengine.datastore import datastore_index
 from google.appengine.ext import db
 from google.appengine.ext.db import polymodel
@@ -31,6 +33,19 @@ import os
 import time
 import typhoonae.mysql.datastore_mysql_stub
 import unittest
+
+
+class TaskQueueServiceStubMock(apiproxy_stub.APIProxyStub):
+    """Task queue service stub for testing purposes."""
+
+    def __init__(self, service_name='taskqueue', root_path=None):
+        super(TaskQueueServiceStubMock, self).__init__(service_name)
+
+    def _Dynamic_Add(self, request, response):
+        pass
+
+    def _Dynamic_BulkAdd(self, request, response):
+        response.add_taskresult()
 
 
 class DatastoreMySQLTestCaseBase(unittest.TestCase):
@@ -65,6 +80,9 @@ class DatastoreMySQLTestCaseBase(unittest.TestCase):
                                '(%s)' % e)
 
         self.stub = apiproxy_stub_map.apiproxy.GetStub('datastore_v3')
+
+        apiproxy_stub_map.apiproxy.RegisterStub(
+            'taskqueue', TaskQueueServiceStubMock())
 
     def tearDown(self):
         """Clears all data."""
@@ -827,3 +845,11 @@ class DatastoreMySQLTestCase(DatastoreMySQLTestCaseBase):
         entity_pbs = datastore_admin.GetSchema()
         entity = datastore.Entity.FromPb(entity_pbs.pop())
         self.assertEqual('Foo', entity.key().kind())
+
+    def testTransactionalTasks(self):
+        """Tests tasks within transactions."""
+
+        def my_transaction():
+            taskqueue.add(url='/path/to/my/worker', transactional=True)
+
+        db.run_in_transaction(my_transaction)
