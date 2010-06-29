@@ -150,7 +150,7 @@ class QueryCursor(object):
 
     Args:
       query: A Query PB.
-      db_cursor: An SQLite cursor returning n+2 columns. The first 2 columns
+      db_cursor: An MySQL cursor returning n+2 columns. The first 2 columns
         must be the path of the entity and the entity itself, while the
         remaining columns must be the sort columns for the query.
     """
@@ -275,7 +275,7 @@ class QueryCursor(object):
 class DatastoreMySQLStub(apiproxy_stub.APIProxyStub):
   """Persistent stub for the Python datastore API.
 
-  Stores all entities in an SQLite database. A DatastoreMySQLStub instance
+  Stores all entities in an MySQL database. A DatastoreMySQLStub instance
   handles a single app's data.
   """
 
@@ -421,7 +421,7 @@ class DatastoreMySQLStub(apiproxy_stub.APIProxyStub):
 
   @staticmethod
   def __MakeParamList(size):
-    """Returns a comma separated list of sqlite substitution parameters.
+    """Returns a comma separated list of MySQL substitution parameters.
 
     Args:
       size: Number of parameters in returned list.
@@ -556,7 +556,7 @@ class DatastoreMySQLStub(apiproxy_stub.APIProxyStub):
             % key)
 
   def __GetConnection(self, transaction):
-    """Retrieves a connection to the SQLite DB.
+    """Retrieves a connection to the MySQL DB.
 
     If a transaction is supplied, the transaction's connection is returned;
     otherwise a fresh connection is returned.
@@ -564,7 +564,7 @@ class DatastoreMySQLStub(apiproxy_stub.APIProxyStub):
     Args:
       transaction: A Transaction PB.
     Returns:
-      An SQLite connection object.
+      An MySQL connection object.
     """
     self.__connection_lock.acquire()
     request_tx = transaction and transaction.handle()
@@ -582,7 +582,7 @@ class DatastoreMySQLStub(apiproxy_stub.APIProxyStub):
     If a transaction is supplied, no action is taken.
 
     Args:
-      conn: An SQLite connection object.
+      conn: An MySQL connection object.
       transaction: A Transaction PB.
       rollback: If True, roll back the database TX instead of committing it.
     """
@@ -597,7 +597,7 @@ class DatastoreMySQLStub(apiproxy_stub.APIProxyStub):
     """Ensures the relevant tables and indexes exist.
 
     Args:
-      conn: An SQLite database connection.
+      conn: An MySQL database connection.
       prefix: The namespace prefix to configure.
       app_id: The app ID.
       name_space: The per-app namespace name.
@@ -615,7 +615,7 @@ class DatastoreMySQLStub(apiproxy_stub.APIProxyStub):
     """Writes index data to disk.
 
     Args:
-      conn: An SQLite connection.
+      conn: An MySQL connection.
       app: The app ID to write indexes for.
     """
     indices = datastore_pb.CompositeIndices()
@@ -648,7 +648,7 @@ class DatastoreMySQLStub(apiproxy_stub.APIProxyStub):
     """Deletes rows from a table.
 
     Args:
-      conn: An SQLite connection.
+      conn: An MySQL connection.
       paths: Paths to delete.
       table: The table to delete from.
     Returns:
@@ -679,7 +679,7 @@ class DatastoreMySQLStub(apiproxy_stub.APIProxyStub):
     """Deletes entities from the index.
 
     Args:
-      conn: An SQLite connection.
+      conn: An MySQL connection.
       keys: A list of keys to delete.
     """
     self.__DeleteEntityRows(conn, keys, 'EntitiesByProperty')
@@ -1204,10 +1204,10 @@ class DatastoreMySQLStub(apiproxy_stub.APIProxyStub):
   ]
 
   def __GetQueryCursor(self, conn, query):
-    """Returns an SQLite query cursor for the provided query.
+    """Returns an MySQL query cursor for the provided query.
 
     Args:
-      conn: The SQLite connection.
+      conn: The MySQL connection.
       query: A datastore_pb.Query protocol buffer.
     Returns:
       A QueryCursor object.
@@ -1574,4 +1574,3 @@ class DatastoreMySQLStub(apiproxy_stub.APIProxyStub):
       self.__indexes[app_id][kind].remove(my_index)
     finally:
       self.__index_lock.release()
-
