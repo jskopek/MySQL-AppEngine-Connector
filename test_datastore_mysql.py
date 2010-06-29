@@ -15,22 +15,20 @@
 # limitations under the License.
 """Unit tests for the Datastore MySQL stub."""
 
+from google.appengine.api import apiproxy_stub_map
+from google.appengine.api import datastore
+from google.appengine.api import datastore_admin
+from google.appengine.api import datastore_errors
 from google.appengine.api import datastore_types
+from google.appengine.api import users
 from google.appengine.datastore import datastore_index
 from google.appengine.ext import db
 from google.appengine.ext.db import polymodel
+from google.appengine.runtime import apiproxy_errors
 
 import datetime
-import google.appengine.api.apiproxy_stub
-import google.appengine.api.apiproxy_stub_map
-import google.appengine.api.datastore_admin
-import google.appengine.api.datastore_errors
-import google.appengine.api.users
-import google.appengine.datastore.entity_pb
-import google.appengine.runtime.apiproxy_errors
 import os
 import time
-import threading
 import typhoonae.mysql.datastore_mysql_stub
 import unittest
 
@@ -48,8 +46,7 @@ class DatastoreMySQLTestCaseBase(unittest.TestCase):
         os.environ['USER_IS_ADMIN'] = '1'
 
         # Register API proxy stub.
-        google.appengine.api.apiproxy_stub_map.apiproxy = (
-            google.appengine.api.apiproxy_stub_map.APIProxyStubMap())
+        apiproxy_stub_map.apiproxy = (apiproxy_stub_map.APIProxyStubMap())
 
         database_info = {
             "host": "127.0.0.1",
@@ -62,14 +59,12 @@ class DatastoreMySQLTestCaseBase(unittest.TestCase):
             'test', database_info)
 
         try:
-            google.appengine.api.apiproxy_stub_map.apiproxy.RegisterStub(
-                'datastore_v3', datastore)
-        except google.appengine.runtime.apiproxy_errors.ApplicationError, e:
+            apiproxy_stub_map.apiproxy.RegisterStub('datastore_v3', datastore)
+        except apiproxy_errors.ApplicationError, e:
             raise RuntimeError('These tests require a running MySQL server '
                                '(%s)' % e)
 
-        self.stub = google.appengine.api.apiproxy_stub_map.apiproxy.GetStub(
-            'datastore_v3')
+        self.stub = apiproxy_stub_map.apiproxy.GetStub('datastore_v3')
 
     def tearDown(self):
         """Clears all data."""
@@ -104,21 +99,19 @@ class DatastoreMySQLTestCase(DatastoreMySQLTestCaseBase):
 
         del a, b
 
-        book = google.appengine.api.datastore.Get(key)
+        book = datastore.Get(key)
         self.assertEqual(
             "{u'title': u'The Adventures Of Tom Sawyer'}", str(book))
 
-        author = google.appengine.api.datastore.Get(book.parent())
+        author = datastore.Get(book.parent())
         self.assertEqual("{u'name': u'Mark Twain'}", str(author))
 
         del book
 
-        google.appengine.api.datastore.Delete(key)
+        datastore.Delete(key)
 
         self.assertRaises(
-            google.appengine.api.datastore_errors.EntityNotFoundError,
-            google.appengine.api.datastore.Get,
-            key)
+            datastore_errors.EntityNotFoundError, datastore.Get, key)
 
         del author
 
@@ -246,7 +239,7 @@ class DatastoreMySQLTestCase(DatastoreMySQLTestCaseBase):
             author = query.get()
 
         self.assertRaises(
-            google.appengine.api.datastore_errors.BadRequestError,
+            datastore_errors.BadRequestError,
             db.run_in_transaction, query_tx)
 
     def testKindlessAncestorQueries(self):
@@ -684,7 +677,7 @@ class DatastoreMySQLTestCase(DatastoreMySQLTestCaseBase):
             description="My first note.",
             author_email="me@inter.net",
             location="52.518,13.408",
-            user=google.appengine.api.users.get_current_user()
+            user=users.get_current_user()
         ).put()
 
         query = db.GqlQuery("SELECT * FROM Note ORDER BY timestamp DESC")
@@ -831,6 +824,6 @@ class DatastoreMySQLTestCase(DatastoreMySQLTestCaseBase):
 
         Foo().put()
 
-        entity_pbs = google.appengine.api.datastore_admin.GetSchema()
-        entity = google.appengine.api.datastore.Entity.FromPb(entity_pbs.pop())
+        entity_pbs = datastore_admin.GetSchema()
+        entity = datastore.Entity.FromPb(entity_pbs.pop())
         self.assertEqual('Foo', entity.key().kind())
