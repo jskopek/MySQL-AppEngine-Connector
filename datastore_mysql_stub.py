@@ -461,8 +461,8 @@ class DatastoreMySQLStub(apiproxy_stub.APIProxyStub):
 
     if isinstance(pb, entity_pb.PropertyValue):
       return buffer(encoder.buffer().tostring())
-
-    return _encode_path(pb)
+    elif isinstance(pb, entity_pb.Path):
+      return buffer(_encode_path(pb))
 
   @staticmethod
   def __AddQueryParam(params, param):
