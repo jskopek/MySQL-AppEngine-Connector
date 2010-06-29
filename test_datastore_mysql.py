@@ -18,6 +18,7 @@
 from google.appengine.api import datastore_types
 from google.appengine.datastore import datastore_index
 from google.appengine.ext import db
+from google.appengine.ext.db import polymodel
 
 import datetime
 import google.appengine.api.apiproxy_stub
@@ -127,6 +128,77 @@ class DatastoreMySQLTestCase(DatastoreMySQLTestCaseBase):
         self.assertEqual('Mark Twain', mark_twain.name)
 
         mark_twain.delete()
+
+    def testExpando(self):
+        """Test the Expando superclass."""
+
+        class Song(db.Expando):
+            title = db.StringProperty()
+ 
+        crazy = Song(
+            title='Crazy like a diamond',
+            author='Lucy Sky',
+            publish_date='yesterday',
+            rating=5.0)
+ 
+        oboken = Song(
+            title='The man from Hoboken',
+            author=['Anthony', 'Lou'],
+            publish_date=datetime.datetime(1977, 5, 3))
+
+        crazy.last_minute_note=db.Text('Get a train to the station.')
+
+        crazy.put()
+        oboken.put()
+
+        self.assertEqual(
+            'The man from Hoboken',
+            Song.all().filter('author =', 'Anthony').get().title)
+
+        self.assertEqual(
+            'The man from Hoboken',
+            Song.all().filter('publish_date >', datetime.datetime(1970, 1, 1)).
+                get().title)
+
+    def testPolymodel(self):
+        """Tests Polymodels."""
+
+        class Contact(polymodel.PolyModel):
+            phone_number = db.PhoneNumberProperty()
+            address = db.PostalAddressProperty()
+
+        class Person(Contact):
+            first_name = db.StringProperty()
+            last_name = db.StringProperty()
+            mobile_number = db.PhoneNumberProperty()
+
+        class Company(Contact):
+            name = db.StringProperty()
+            fax_number = db.PhoneNumberProperty()
+
+        p = Person(
+            phone_number='1-206-555-9234',
+            address='123 First Ave., Seattle, WA, 98101',
+            first_name='Alfred',
+            last_name='Smith',
+            mobile_number='1-206-555-0117')
+
+        c = Company(
+            phone_number='1-503-555-9123',
+            address='P.O. Box 98765, Salem, OR, 97301',
+            name='Data Solutions, LLC',
+            fax_number='1-503-555-6622')
+
+        p.put()
+        c.put()
+
+        self.assertEqual(
+            set([e.phone_number for e in [p, c]]),
+            set([e.phone_number for e in list(Contact.all())]))
+
+        self.assertEqual(
+            set([p.phone_number]),
+            set([e.phone_number for e in list(Person.all())]))
 
     def testGetEntitiesByNameAndID(self):
         """Tries to retrieve entities by name or numeric id."""
