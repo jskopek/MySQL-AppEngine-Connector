@@ -118,7 +118,7 @@ CREATE TABLE IF NOT EXISTS %(prefix)s_EntitiesByProperty (
   name VARCHAR(255) NOT NULL,
   value LONGBLOB NOT NULL,
   __path__ VARCHAR(255) NOT NULL REFERENCES Entities,
-  PRIMARY KEY(kind, name, __path__));
+  PRIMARY KEY(kind, name, value(10), __path__));
 ""","""
 INSERT IGNORE INTO Apps (app_id) VALUES ('%(app_id)s');
 ""","""
@@ -724,11 +724,10 @@ class DatastoreMySQLStub(apiproxy_stub.APIProxyStub):
     entities = sorted((self.__GetTablePrefix(x), x) for x in entities)
     for prefix, group in itertools.groupby(entities, lambda x: x[0]):
       cursor = conn.cursor()
-#      for row in RowGenerator(group):
-#          cursor.execute('REPLACE INTO %s_EntitiesByProperty VALUES (%%s, %%s, %%s, %%s)' % prefix,row)
       cursor.executemany(
-          'REPLACE INTO %s_EntitiesByProperty VALUES (%%s, %%s, %%s, %%s)' % prefix,
-          RowGenerator(group))
+        'INSERT INTO %s_EntitiesByProperty VALUES '
+        '(%%s, %%s, %%s, %%s)' % prefix,
+        RowGenerator(group))
 
   def __AllocateIds(self, conn, prefix, size):
     """Allocates IDs.
