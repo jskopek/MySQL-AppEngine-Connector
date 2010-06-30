@@ -242,12 +242,15 @@ class DatastoreMySQLTestCase(DatastoreMySQLTestCaseBase):
             b = Book(parent=a, title="The Adventures Of Tom Sawyer")
             b.put()
 
-            b.delete()
+            c = Book(parent=a, title="The Hitchhiker's Guide to the Galaxy")
+            c.put()
+
+            c.delete()
 
         db.run_in_transaction(tx)
 
         self.assertEqual(1, Author.all().count())
-        self.assertEqual(0, Book.all().count())
+        self.assertEqual(1, Book.all().count())
 
         marktwain = Author.get_by_key_name('marktwain')
 

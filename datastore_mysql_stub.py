@@ -788,7 +788,7 @@ class DatastoreMySQLStub(apiproxy_stub.APIProxyStub):
   def __ExtractEntityGroupFromKeys(keys):
     """Extracts entity group."""
 
-    types = set([k.path().element_list()[0].type() for k in keys])
+    types = set([k.path().element_list()[-1].type() for k in keys])
     assert len(types) == 1
 
     return types.pop()
