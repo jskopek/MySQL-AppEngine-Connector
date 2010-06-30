@@ -254,14 +254,16 @@ class DatastoreMySQLTestCase(DatastoreMySQLTestCaseBase):
         class Book(db.Model):
             title = db.StringProperty()
 
-        def tx():
-            a = Author(name='Mark Twain', key_name='marktwain')
-            a.put()
+        marktwain = Author(name='Mark Twain', key_name='marktwain').put()
 
-            b = Book(parent=a, title="The Adventures Of Tom Sawyer")
+        def tx():
+            assert db.get(marktwain).name == "Mark Twain"
+
+            b = Book(parent=marktwain, title="The Adventures Of Tom Sawyer")
             b.put()
 
-            c = Book(parent=a, title="The Hitchhiker's Guide to the Galaxy")
+            c = Book(
+                parent=marktwain, title="The Hitchhiker's Guide to the Galaxy")
             c.put()
 
             c.delete()
