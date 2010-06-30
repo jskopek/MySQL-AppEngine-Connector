@@ -810,20 +810,16 @@ class DatastoreMySQLStub(apiproxy_stub.APIProxyStub):
         keys = [e.key() for e in request.entity_list()]
       elif call in ('Get', 'Delete'):
         keys = request.key_list()
-      entity_group = self.__ExtractEntityGroupFromKeys(keys)
       if request.has_transaction():
         if (request.transaction() in self.__transactions
             and not self.__inside_tx):
+          entity_group = self.__ExtractEntityGroupFromKeys(keys)
           self.__inside_tx = True
           self.__transactions[request.transaction()] = entity_group
           self.__AcquireLockForEntityGroup(self.__connection, entity_group)
 
     super(DatastoreMySQLStub, self).MakeSyncCall(
       service, call, request, response)
-
-    if call in ('Put', 'Delete'):
-      if not request.has_transaction():
-        self.__ReleaseLockForEntityGroup(self.__connection, entity_group)
 
     if call in ('Commit', 'Rollback'):
       self.__ReleaseLockForEntityGroup(self.__connection,
