@@ -805,28 +805,8 @@ class DatastoreMySQLStub(apiproxy_stub.APIProxyStub):
 
     self.AssertPbIsInitialized(request)
 
-    if call in ('Put', 'Get', 'Delete'):
-      if call == 'Put':
-        keys = [e.key() for e in request.entity_list()]
-      elif call in ('Get', 'Delete'):
-        keys = request.key_list()
-      if request.has_transaction():
-        if (request.transaction() in self.__transactions
-            and not self.__inside_tx):
-          entity_group = self.__ExtractEntityGroupFromKeys(keys)
-          self.__inside_tx = True
-          self.__transactions[request.transaction()] = entity_group
-          self.__AcquireLockForEntityGroup(self.__connection, entity_group)
-
     super(DatastoreMySQLStub, self).MakeSyncCall(
       service, call, request, response)
-
-    if call in ('Commit', 'Rollback'):
-      self.__ReleaseLockForEntityGroup(self.__connection,
-                                       self.__transactions[request] or '')
-      del self.__transactions[request]
-      self.__inside_tx = False
-      self.__tx_lock.release()
 
     self.AssertPbIsInitialized(response)
 
@@ -854,6 +834,14 @@ class DatastoreMySQLStub(apiproxy_stub.APIProxyStub):
     conn = self.__GetConnection(put_request.transaction())
     try:
       entities = put_request.entity_list()
+      keys = [e.key() for e in entities]
+      if put_request.has_transaction():
+        if (put_request.transaction() in self.__transactions
+            and not self.__inside_tx):
+          entity_group = self.__ExtractEntityGroupFromKeys(keys)
+          self.__inside_tx = True
+          self.__transactions[put_request.transaction()] = entity_group
+          self.__AcquireLockForEntityGroup(self.__connection, entity_group)
       for entity in entities:
         self.__ValidateKey(entity.key())
 
@@ -894,7 +882,15 @@ class DatastoreMySQLStub(apiproxy_stub.APIProxyStub):
   def _Dynamic_Get(self, get_request, get_response):
     conn = self.__GetConnection(get_request.transaction())
     try:
-      for key in get_request.key_list():
+      keys = get_request.key_list()
+      if get_request.has_transaction():
+        if (get_request.transaction() in self.__transactions
+            and not self.__inside_tx):
+          entity_group = self.__ExtractEntityGroupFromKeys(keys)
+          self.__inside_tx = True
+          self.__transactions[get_request.transaction()] = entity_group
+          self.__AcquireLockForEntityGroup(self.__connection, entity_group)
+      for key in keys:
         self.__ValidateAppId(key.app())
         prefix = self.__GetTablePrefix(key)
         cursor = conn.cursor()
@@ -912,7 +908,15 @@ class DatastoreMySQLStub(apiproxy_stub.APIProxyStub):
   def _Dynamic_Delete(self, delete_request, delete_response):
     conn = self.__GetConnection(delete_request.transaction())
     try:
-      for key in delete_request.key_list():
+      keys = delete_request.key_list()
+      if delete_request.has_transaction():
+        if (delete_request.transaction() in self.__transactions
+            and not self.__inside_tx):
+          entity_group = self.__ExtractEntityGroupFromKeys(keys)
+          self.__inside_tx = True
+          self.__transactions[request.transaction()] = entity_group
+          self.__AcquireLockForEntityGroup(self.__connection, entity_group)
+      for key in keys:
         self.__ValidateAppId(key.app())
         if delete_request.transaction().handle():
           self.__tx_deletes.add(key)
@@ -1380,6 +1384,11 @@ class DatastoreMySQLStub(apiproxy_stub.APIProxyStub):
       self.__tx_writes = {}
       self.__tx_deletes = set()
       self.__ReleaseConnection(conn, None)
+      self.__ReleaseLockForEntityGroup(self.__connection,
+                                       self.__transactions[transaction] or '')
+      del self.__transactions[transaction]
+      self.__inside_tx = False
+      self.__tx_lock.release()
 
   def _Dynamic_Rollback(self, transaction, _):
     conn = self.__GetConnection(transaction)
@@ -1388,6 +1397,11 @@ class DatastoreMySQLStub(apiproxy_stub.APIProxyStub):
     self.__tx_writes = {}
     self.__tx_deletes = set()
     self.__ReleaseConnection(conn, None, True)
+    self.__ReleaseLockForEntityGroup(self.__connection,
+                                     self.__transactions[transaction] or '')
+    del self.__transactions[transaction]
+    self.__inside_tx = False
+    self.__tx_lock.release()
 
   def _Dynamic_GetSchema(self, req, schema):
     conn = self.__GetConnection(None)
