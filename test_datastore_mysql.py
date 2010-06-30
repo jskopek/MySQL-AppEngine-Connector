@@ -140,6 +140,25 @@ class DatastoreMySQLTestCase(DatastoreMySQLTestCaseBase):
 
         mark_twain.delete()
 
+    def testGetPutMultiTypes(self):
+        """Sets and Gets models with different entity groups."""
+
+        class Author(db.Model):
+            name = db.StringProperty()
+
+        class Book(db.Model):
+            title = db.StringProperty()
+
+        a = Author(name='Mark Twain', key_name='marktwain')
+        b = Book(title="The Adventures Of Tom Sawyer")
+        keys = db.put([a,b])
+        self.assertEqual(2, len(keys))
+
+        items = db.get(keys)
+        self.assertEqual(2, len(items))
+        
+        db.delete(keys)
+
     def testExpando(self):
         """Test the Expando superclass."""
 

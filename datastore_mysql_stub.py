@@ -118,7 +118,8 @@ CREATE TABLE IF NOT EXISTS %(prefix)s_EntitiesByProperty (
   name VARCHAR(255) NOT NULL,
   value LONGBLOB NOT NULL,
   __path__ VARCHAR(255) NOT NULL REFERENCES Entities,
-  PRIMARY KEY(kind, name, value(10), __path__));
+  hashed_index CHAR(32) NOT NULL,
+  PRIMARY KEY(hashed_index));
 ""","""
 INSERT IGNORE INTO Apps (app_id) VALUES ('%(app_id)s');
 ""","""
@@ -717,16 +718,22 @@ class DatastoreMySQLStub(apiproxy_stub.APIProxyStub):
     def RowGenerator(entities):
       for unused_prefix, e in entities:
         for p in e.property_list():
-          yield (self.__GetEntityKind(e),
-                 p.name(),
-                 self.__EncodeIndexPB(p.value()),
-                 self.__EncodeIndexPB(e.key().path()))
+          p_vals = [self.__GetEntityKind(e), p.name(), self.__EncodeIndexPB(p.value()), self.__EncodeIndexPB(e.key().path())]
+
+          hashed_index = md5.new(''.join(p_vals[:1]))
+          hashed_index.update(p_vals[2]) #buffer values cannot be joined into a string
+          hashed_index.update(p_vals[3])
+          p_vals.append( hashed_index.hexdigest() )
+
+          yield p_vals
     entities = sorted((self.__GetTablePrefix(x), x) for x in entities)
     for prefix, group in itertools.groupby(entities, lambda x: x[0]):
       cursor = conn.cursor()
       cursor.executemany(
-        'INSERT INTO %s_EntitiesByProperty VALUES '
-        '(%%s, %%s, %%s, %%s)' % prefix,
+        'INSERT IGNORE INTO %s_EntitiesByProperty '
+        '(kind, name, value, __path__, hashed_index)  '
+        'VALUES '
+        '(%%s, %%s, %%s, %%s, %%s)' % prefix,
         RowGenerator(group))
 
   def __AllocateIds(self, conn, prefix, size):
