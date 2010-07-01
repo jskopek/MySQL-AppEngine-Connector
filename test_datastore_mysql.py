@@ -786,16 +786,35 @@ class DatastoreMySQLTestCase(DatastoreMySQLTestCaseBase):
 
         self.assertEqual('Foo Bar', query.get().contents)
 
-    def testQueriesWithLimit(self):
+    def testQueriesWithOffsetAndLimit(self):
         """Retrieves a limited number of results."""
 
         class MyModel(db.Model):
-            property = db.StringProperty()
+            data = db.StringProperty()
+            number = db.IntegerProperty()
+            
 
         for i in range(100):
-            MyModel(property="Random data.").put()
+            MyModel(data="Random data.", number=i).put()
 
-        self.assertEqual(50, MyModel.all().count(limit=50))
+        query = (MyModel.all()
+                    .filter('data =', "Random data.")
+                    .filter('number >=', 10)
+                    .filter('number <', 20)
+                    .order('-number')
+        )
+
+        self.assertEqual(
+            [19L, 18L], [e.number for e in query.fetch(2)])
+
+        self.assertEqual(
+            [14L, 13L, 12L], [e.number for e in query.fetch(3, offset=5)])
+
+        self.assertEqual(
+            [18L, 17L], [e.number for e in query.fetch(2, offset=1)])
+
+        self.assertEqual(
+            [], [e.number for e in query.fetch(2, offset=10)])
 
     def testAllocateIds(self):
         """ """
