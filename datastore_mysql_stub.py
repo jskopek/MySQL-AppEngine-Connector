@@ -165,7 +165,7 @@ class QueryCursor(object):
     self.__next_result = (None, None)
 
     if query.has_limit():
-      self.limit = query.limit() + query.offset()
+      self.limit = query.limit()# + query.offset()
     else:
       self.limit = None
 
@@ -1265,6 +1265,11 @@ class DatastoreMySQLStub(apiproxy_stub.APIProxyStub):
 
     sql_stmt, params = result
 
+    if query.has_limit() and query.has_offset():
+      sql_stmt += ' LIMIT %i, %i' % (query.offset(), query.limit())
+    elif query.has_limit() and not query.has_offset():
+      sql_stmt += ' LIMIT %i' % query.limit()
+
     if self.__verbose:
       logging.info("Executing statement '%s' with arguments %r",
                    sql_stmt, [str(x) for x in params])
@@ -1273,8 +1278,8 @@ class DatastoreMySQLStub(apiproxy_stub.APIProxyStub):
     cursor = QueryCursor(query, db_cursor)
     if query.has_compiled_cursor() and query.compiled_cursor().position_size():
       cursor.ResumeFromCompiledCursor(query.compiled_cursor())
-    if query.has_offset():
-      cursor.Skip(query.offset())
+    #if query.has_offset():
+    #  cursor.Skip(query.offset())
 
     clone = datastore_pb.Query()
     clone.CopyFrom(query)
