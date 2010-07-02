@@ -31,6 +31,7 @@ import logging
 import md5
 import sys
 import threading
+import time
 
 from google.appengine.datastore import entity_pb
 from google.appengine.api import api_base_pb
@@ -43,7 +44,6 @@ from google.appengine.datastore import sortable_pb_encoder
 from google.appengine.runtime import apiproxy_errors
 
 import MySQLdb
-import base64
 
 try:
   __import__('google.appengine.api.labs.taskqueue.taskqueue_service_pb')
@@ -95,31 +95,39 @@ _ORDER_MAP = {
 _CORE_SCHEMA = ["""
 CREATE TABLE IF NOT EXISTS Apps (
   app_id VARCHAR(255) NOT NULL PRIMARY KEY,
-  indexes VARCHAR(255));
+  indexes VARCHAR(255)
+) ENGINE=InnoDB;
 ""","""
 CREATE TABLE IF NOT EXISTS Namespaces (
   app_id VARCHAR(255) NOT NULL,
   name_space VARCHAR(255) NOT NULL,
-  PRIMARY KEY (app_id, name_space));
+  PRIMARY KEY (app_id, name_space)
+) ENGINE=InnoDB;
 ""","""
 CREATE TABLE IF NOT EXISTS IdSeq (
   prefix VARCHAR(255) NOT NULL PRIMARY KEY,
-  next_id INT(100) NOT NULL);
+  next_id INT(100) NOT NULL
+) ENGINE=InnoDB;
 """]
 
 _NAMESPACE_SCHEMA = ["""
 CREATE TABLE IF NOT EXISTS %(prefix)s_Entities (
   __path__ VARCHAR(255) NOT NULL PRIMARY KEY,
   kind VARCHAR(255) NOT NULL,
-  entity LONGBLOB NOT NULL);
+  entity MEDIUMBLOB NOT NULL,
+  INDEX(kind),
+  INDEX(__path__)
+) ENGINE=InnoDB;
 ""","""
 CREATE TABLE IF NOT EXISTS %(prefix)s_EntitiesByProperty (
   kind VARCHAR(255) NOT NULL,
   name VARCHAR(255) NOT NULL,
-  value LONGBLOB NOT NULL,
+  value MEDIUMBLOB NOT NULL,
   __path__ VARCHAR(255) NOT NULL REFERENCES Entities,
   hashed_index CHAR(32) NOT NULL,
-  PRIMARY KEY(hashed_index));
+  PRIMARY KEY(hashed_index),
+  INDEX(value(32))
+) ENGINE=InnoDB;
 ""","""
 INSERT IGNORE INTO Apps (app_id) VALUES ('%(app_id)s');
 ""","""
@@ -229,7 +237,6 @@ class QueryCursor(object):
     while self.__cursor and not entity:
       if path and path not in self.__seen:
         self.__seen.add(path)
-        data = base64.b64decode(data)
         entity = entity_pb.EntityProto(data)
       else:
         path, data = self._GetResult()
@@ -308,7 +315,7 @@ class DatastoreMySQLStub(apiproxy_stub.APIProxyStub):
                app_id,
                database_info_dict,
                require_indexes=False,
-               verbose=False,
+               verbose=True,
                service_name='datastore_v3',
                trusted=False):
     """Constructor.
@@ -709,7 +716,7 @@ class DatastoreMySQLStub(apiproxy_stub.APIProxyStub):
       for unused_prefix, e in entities:
         yield (self.__EncodeIndexPB(e.key().path()),
                self.__GetEntityKind(e),
-               base64.b64encode(buffer(e.Encode())))
+               buffer(e.Encode()))
 
     entities = sorted((self.__GetTablePrefix(x), x) for x in entities)
     for prefix, group in itertools.groupby(entities, lambda x: x[0]):
@@ -912,8 +919,7 @@ class DatastoreMySQLStub(apiproxy_stub.APIProxyStub):
         group = get_response.add_entity()
         row = cursor.fetchone()
         if row:
-          data = base64.b64decode(row[0])
-          group.mutable_entity().ParseFromString(data)
+          group.mutable_entity().ParseFromString(row[0])
     finally:
       self.__ReleaseConnection(conn, get_request.transaction())
 
@@ -1269,7 +1275,12 @@ class DatastoreMySQLStub(apiproxy_stub.APIProxyStub):
       logging.info("Executing statement '%s' with arguments %r",
                    sql_stmt, [str(x) for x in params])
     db_cursor = conn.cursor()
+    if self.__verbose:
+      start_time = time.time()
     db_cursor.execute(sql_stmt, params)
+    if self.__verbose:
+      time_delta_ms = (time.time() - start_time) * 1000
+      logging.info("Statement execution time: %s" % time_delta_ms)
     cursor = QueryCursor(query, db_cursor)
     if query.has_compiled_cursor() and query.compiled_cursor().position_size():
       cursor.ResumeFromCompiledCursor(query.compiled_cursor())
@@ -1459,7 +1470,6 @@ class DatastoreMySQLStub(apiproxy_stub.APIProxyStub):
             prop_pb = kind_pb.add_property()
             prop_pb.set_name(name.encode('utf-8'))
             prop_pb.set_multiple(False)
-          value_data = base64.b64decode(value_data)
           value_decoder = sortable_pb_encoder.Decoder(
               array.array('B', str(value_data)))
           value_pb = prop_pb.mutable_value()
