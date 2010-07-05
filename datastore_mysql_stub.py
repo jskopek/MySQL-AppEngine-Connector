@@ -1326,7 +1326,7 @@ class DatastoreMySQLStub(apiproxy_stub.APIProxyStub):
     db_cursor.execute(sql_stmt, params)
     if self.__verbose:
       time_delta_ms = (time.time() - start_time) * 1000
-      logging.info("Statement execution time: %s" % time_delta_ms)
+      logging.info("Statement execution time (ms): %s" % time_delta_ms)
     cursor = QueryCursor(query, db_cursor)
     if query.has_compiled_cursor() and query.compiled_cursor().position_size():
       cursor.ResumeFromCompiledCursor(query.compiled_cursor())
