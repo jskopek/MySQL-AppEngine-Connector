@@ -835,14 +835,17 @@ class DatastoreMySQLTestCase(DatastoreMySQLTestCaseBase):
     def testCursors(self):
         """Tests the cursor API."""
 
-        class Integer(db.Model):
+        class Number(db.Model):
+            unit = db.StringProperty(choices=set(['cm', 'm']))
             value = db.IntegerProperty()
 
         for i in xrange(0, 2000):
-            Integer(value=i).put()
+            if i % 2: unit = 'm'
+            else: unit = 'cm'
+            Number(unit=unit, value=i).put()
 
         # Set up a simple query.
-        query = Integer.all()
+        query = Number.all()
 
         # Fetch some results.
         a = query.fetch(500)
@@ -870,12 +873,33 @@ class DatastoreMySQLTestCase(DatastoreMySQLTestCaseBase):
         self.assertEqual(1700L, query.get().value)
 
         # Use a query with filters.
-        query = Integer.all().filter('value >', 500).filter('value <=', 1000) 
+        query = Number.all().filter('value >', 500).filter('value <=', 1000) 
         e = query.fetch(100)
         query.with_cursor(query.cursor())
         e = query.fetch(50)
         self.assertEqual(601, e[0].value)
         self.assertEqual(650, e[-1].value)
+
+        # Query with filter and order.
+        query = (Number.all()
+                    .filter('unit =', 'cm')
+                    .order('-value'))
+        f = query.fetch(5)
+        self.assertEqual(
+            [1998L, 1996L, 1994L, 1992L, 1990L],
+            [n.value for n in f])
+
+        query.with_cursor(query.cursor())
+        f = query.fetch(5)
+        self.assertEqual(
+            [1988L, 1986L, 1984L, 1982L, 1980L],
+            [n.value for n in f])
+
+        query.with_cursor(query.cursor())
+        f = query.fetch(6)
+        self.assertEqual(
+            [1978L, 1976L, 1974L, 1972L, 1970L, 1968L],
+            [n.value for n in f])
 
     def testGetSchema(self):
         """Infers an app's schema from the entities in the datastore."""

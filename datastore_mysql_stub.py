@@ -201,7 +201,12 @@ class QueryCursor(object):
       cc: The compiled cursor to fill out.
     """
     position = cc.add_position()
-    position.set_start_key(self.__position)
+    if self.__cursor:
+      offset = str(self.__cursor.rowcount)
+    else:
+      offset = str(0)
+    start_key = self.__position + '!' + offset.zfill(10)
+    position.set_start_key(start_key)
 
   def _GetResult(self):
     """Returns the next result from the result set, without deduplication.
@@ -217,10 +222,22 @@ class QueryCursor(object):
       return None, None
     path, data, position_parts = str(row[0]), row[1], row[2:]
     position = ''.join(str(x) for x in position_parts)
-    if (self.__query.has_end_compiled_cursor() and position >
-        self.__query.end_compiled_cursor().position(0).start_key()):
-      self.__cursor = None
-      return None, None
+
+    if self.__query.order_list():
+      direction = self.__query.order(0).direction()
+    else:
+      direction = datastore_pb.Query_Order.ASCENDING
+
+    if self.__query.has_end_compiled_cursor():
+      start_key = self.__query.end_compiled_cursor().position(0).start_key()
+      if direction == datastore_pb.Query_Order.ASCENDING:
+        if position > start_key:
+          self.__cursor = None
+          return None, None
+      elif direction == datastore_pb.Query_Order.DESCENDING:
+        if position < start_key:
+          self.__cursor = None
+          return None, None
 
     self.__position = position
     return path, data
@@ -258,14 +275,31 @@ class QueryCursor(object):
       cc: The compiled cursor to resume from.
     """
     target_position = cc.position(0).start_key()
-    if (self.__query.has_end_compiled_cursor() and target_position >=
-        self.__query.end_compiled_cursor().position(0).start_key()):
-      self.__position = target_position
-      self.__cursor = None
-      return
 
-    while self.__position <= target_position and self.__cursor:
-      self.__next_result = self._GetResult()
+    if self.__query.order_list():
+      direction = self.__query.order(0).direction()
+    else:
+      direction = datastore_pb.Query_Order.ASCENDING
+
+    if direction == datastore_pb.Query_Order.ASCENDING:
+      if (self.__query.has_end_compiled_cursor() and target_position >=
+          self.__query.end_compiled_cursor().position(0).start_key()):
+        self.__position = target_position
+        self.__cursor = None
+        return
+
+      while self.__position <= target_position and self.__cursor:
+        self.__next_result = self._GetResult()
+
+    elif direction == datastore_pb.Query_Order.DESCENDING:
+      if (self.__query.has_end_compiled_cursor() and target_position <=
+          self.__query.end_compiled_cursor().position(0).start_key()):
+        self.__position = target_position
+        self.__cursor = None
+        return
+
+      while self.__position >= target_position and self.__cursor:
+        self.__next_result = self._GetResult()
 
   def PopulateQueryResult(self, count, result):
     """Populates a QueryResult PB with results from the cursor.
@@ -1270,6 +1304,18 @@ class DatastoreMySQLStub(apiproxy_stub.APIProxyStub):
           'No strategy found to satisfy query.')
 
     sql_stmt, params = result
+
+    if query.has_compiled_cursor() and query.compiled_cursor().position_size():
+      start_key, n = query.compiled_cursor().position(0).start_key().split('!')
+      new_offset = int(n)
+      query.set_offset(new_offset)
+      query.set_limit(query.limit() + new_offset)
+
+    if query.has_limit() and query.has_offset():
+      sql_stmt += ' LIMIT %i, %i' % (query.offset(), query.limit())
+      query.set_offset(0)
+    elif query.has_limit() and not query.has_offset():
+      sql_stmt += ' LIMIT %i' % query.limit()
 
     if self.__verbose:
       logging.info("Executing statement '%s' with arguments %r",
