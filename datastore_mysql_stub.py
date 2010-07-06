@@ -384,7 +384,7 @@ class DatastoreMySQLStub(apiproxy_stub.APIProxyStub):
 
     self.__connection = MySQLdb.connect(
         host=database_info_dict.get('host', '127.0.0.1'),
-        user=database_info_dict.get('user', 'roor'),
+        user=database_info_dict.get('user', 'root'),
         passwd=database_info_dict.get('passwd', ''),
         db='mysql')
     self.__connection_lock = threading.RLock()
