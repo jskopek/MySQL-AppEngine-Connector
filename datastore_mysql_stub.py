@@ -382,7 +382,11 @@ class DatastoreMySQLStub(apiproxy_stub.APIProxyStub):
     self.__id_map = {}
     self.__id_lock = threading.Lock()
 
-    self.__connection = MySQLdb.connect(**database_info_dict)
+    self.__connection = MySQLdb.connect(
+        host=database_info_dict.get('host', '127.0.0.1'),
+        user=database_info_dict.get('user', 'roor'),
+        passwd=database_info_dict.get('passwd', ''),
+        db='mysql')
     self.__connection_lock = threading.RLock()
     self.__current_transaction = None
     self.__next_tx_handle = 1
@@ -407,9 +411,17 @@ class DatastoreMySQLStub(apiproxy_stub.APIProxyStub):
       raise datastore_errors.InternalError('%s' % e)
 
   def __Init(self):
+    """Initializes MySQL database and creates required tables."""
+    cursor = self.__connection.cursor()
+    cursor.execute(
+      'CREATE DATABASE IF NOT EXISTS %s' % self.__database_info_dict['db'])
+    cursor.close()
+    self.__connection.commit()
+
+    self.__connection = MySQLdb.connect(**self.__database_info_dict)
     cursor = self.__connection.cursor()
     for sql_command in _CORE_SCHEMA:
-        cursor.execute(sql_command)
+      cursor.execute(sql_command)
     self.__connection.commit()
 
     cursor.execute('SELECT app_id, name_space FROM Namespaces')
