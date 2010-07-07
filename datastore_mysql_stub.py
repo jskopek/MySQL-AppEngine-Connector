@@ -32,6 +32,7 @@ import md5
 import sys
 import threading
 import time
+import types
 
 from google.appengine.datastore import entity_pb
 from google.appengine.api import api_base_pb
@@ -95,39 +96,41 @@ _ORDER_MAP = {
 _CORE_SCHEMA = ["""
 CREATE TABLE IF NOT EXISTS Apps (
   app_id VARCHAR(255) NOT NULL PRIMARY KEY,
-  indexes VARCHAR(255)
-) ENGINE=InnoDB;
+  indexes VARCHAR(255));
 ""","""
 CREATE TABLE IF NOT EXISTS Namespaces (
   app_id VARCHAR(255) NOT NULL,
   name_space VARCHAR(255) NOT NULL,
-  PRIMARY KEY (app_id, name_space)
-) ENGINE=InnoDB;
+  PRIMARY KEY (app_id, name_space));
 ""","""
 CREATE TABLE IF NOT EXISTS IdSeq (
   prefix VARCHAR(255) NOT NULL PRIMARY KEY,
-  next_id INT(100) NOT NULL
-) ENGINE=InnoDB;
+  next_id INT(100) NOT NULL);
 """]
 
 _NAMESPACE_SCHEMA = ["""
-CREATE TABLE IF NOT EXISTS %(prefix)s_Entities (
-  __path__ VARCHAR(255) NOT NULL PRIMARY KEY,
-  kind VARCHAR(255) NOT NULL,
-  entity MEDIUMBLOB NOT NULL,
-  INDEX(kind),
-  INDEX(__path__)
-) ENGINE=InnoDB;
+CREATE TABLE `%(prefix)s_Entities` (
+  `__path__` varchar(255) NOT NULL,
+  `kind` varchar(255) NOT NULL,
+  `entity` longblob NOT NULL,
+  PRIMARY KEY (`__path__`),
+  KEY `i1` (`kind`),
+  KEY `i2` (`__path__`)
+) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 ""","""
-CREATE TABLE IF NOT EXISTS %(prefix)s_EntitiesByProperty (
-  kind VARCHAR(255) NOT NULL,
-  name VARCHAR(255) NOT NULL,
-  value MEDIUMBLOB NOT NULL,
-  __path__ VARCHAR(255) NOT NULL REFERENCES Entities,
-  hashed_index CHAR(32) NOT NULL,
-  PRIMARY KEY(hashed_index),
-  INDEX(value(32))
-) ENGINE=InnoDB;
+CREATE TABLE `%(prefix)s_EntitiesByProperty` (
+    `kind` varchar(255) NOT NULL,
+    `name` varchar(255) NOT NULL,
+    `value` MEDIUMBLOB DEFAULT NULL,
+    `__path__` varchar(255) NOT NULL,
+    `hashed_index` char(32) NOT NULL,
+    PRIMARY KEY (`hashed_index`),
+    INDEX(value(32)),
+    KEY `i1` (`kind`),
+    KEY `i2` (`kind`,`name`),
+    KEY `i3` (`__path__`),
+    KEY `i4` (`hashed_index`)
+) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 ""","""
 INSERT IGNORE INTO Apps (app_id) VALUES ('%(app_id)s');
 ""","""
@@ -413,21 +416,19 @@ class DatastoreMySQLStub(apiproxy_stub.APIProxyStub):
   def __Init(self):
     """Initializes MySQL database and creates required tables."""
     cursor = self.__connection.cursor()
-    cursor.execute(
-      'CREATE DATABASE IF NOT EXISTS %s' % self.__database_info_dict['db'])
-    cursor.close()
+    self._ExecuteSQL('CREATE DATABASE IF NOT EXISTS %s' % self.__database_info_dict['db'], None, cursor)
     self.__connection.commit()
 
     self.__connection = MySQLdb.connect(**self.__database_info_dict)
     cursor = self.__connection.cursor()
     for sql_command in _CORE_SCHEMA:
-      cursor.execute(sql_command)
+      self._ExecuteSQL(sql_command,None,cursor)
     self.__connection.commit()
 
-    cursor.execute('SELECT app_id, name_space FROM Namespaces')
+    self._ExecuteSQL('SELECT app_id, name_space FROM Namespaces', None, cursor)
     self.__namespaces = set(cursor.fetchall())
 
-    cursor.execute('SELECT app_id, indexes FROM Apps')
+    self._ExecuteSQL('SELECT app_id, indexes FROM Apps', None, cursor)
     for app_id, index_proto in cursor.fetchall():
       index_map = self.__indexes.setdefault(app_id, {})
       if not index_proto:
@@ -441,11 +442,10 @@ class DatastoreMySQLStub(apiproxy_stub.APIProxyStub):
     conn = self.__GetConnection(None)
     cursor = conn.cursor()
     try:
-      cursor.execute(
-          "SELECT TABLE_NAME FROM information_schema.Tables "
-          "WHERE TABLE_SCHEMA='%s';" % self.__database_info_dict['db'])
+      self._ExecuteSQL("SELECT TABLE_NAME FROM information_schema.Tables "
+          "WHERE TABLE_SCHEMA='%s';" % self.__database_info_dict['db'], None, cursor)
       for row in [v[0] for v in cursor.fetchall()]:
-        cursor.execute('DROP TABLE %s' % row)
+        self._ExecuteSQL('DROP TABLE %s' % row, None, cursor)
       conn.commit()
     finally:
       self.__ReleaseConnection(conn, None)
@@ -672,7 +672,7 @@ class DatastoreMySQLStub(apiproxy_stub.APIProxyStub):
     cursor = conn.cursor()
     for sql_command in _NAMESPACE_SCHEMA:
       try:
-        cursor.execute(sql_command % format_args)
+        self._ExecuteSQL(sql_command % format_args, None, cursor)
       except MySQLdb.IntegrityError, e:
         logging.warn(str(e))
     conn.commit()
@@ -688,8 +688,8 @@ class DatastoreMySQLStub(apiproxy_stub.APIProxyStub):
     for indexes in self.__indexes[app].values():
       indices.index_list().extend(indexes)
 
-    conn.execute('UPDATE Apps SET indexes = ? WHERE app_id = ?',
-                 (app, indices.Encode()))
+    cursor = conn.cursor()
+    self._ExecuteSQL('UPDATE Apps SET indexes = ? WHERE app_id = ?' % format_args, (app, indices.Encode()), cursor)
 
   def __GetTablePrefix(self, data):
     """Returns the namespace prefix for a query.
@@ -722,7 +722,7 @@ class DatastoreMySQLStub(apiproxy_stub.APIProxyStub):
     """
     cursor = conn.cursor()
     sql_command = 'DELETE FROM %s WHERE __path__ IN (%s)'%(table, self.__MakeParamList(len(paths)))
-    cursor.execute(sql_command, paths)
+    self._ExecuteSQL(sql_command, paths, cursor)
     return cursor.rowcount
 
   def __DeleteEntityRows(self, conn, keys, table):
@@ -768,9 +768,7 @@ class DatastoreMySQLStub(apiproxy_stub.APIProxyStub):
     for prefix, group in itertools.groupby(entities, lambda x: x[0]):
       cursor = conn.cursor()
       group_rows = RowGenerator(group)
-      cursor.executemany(
-          'REPLACE INTO %s_Entities VALUES (%%s, %%s, %%s)' % prefix,
-          group_rows)
+      self._ExecuteSQL('REPLACE INTO %s_Entities VALUES (%%s, %%s, %%s)' % prefix, group_rows, cursor)
 
   def __InsertIndexEntries(self, conn, entities):
     """Inserts index entries for the supplied entities.
@@ -794,12 +792,12 @@ class DatastoreMySQLStub(apiproxy_stub.APIProxyStub):
     entities = sorted((self.__GetTablePrefix(x), x) for x in entities)
     for prefix, group in itertools.groupby(entities, lambda x: x[0]):
       cursor = conn.cursor()
-      cursor.executemany(
+      self._ExecuteSQL(
         'INSERT IGNORE INTO %s_EntitiesByProperty '
         '(kind, name, value, __path__, hashed_index)  '
         'VALUES '
         '(%%s, %%s, %%s, %%s, %%s)' % prefix,
-        RowGenerator(group))
+        RowGenerator(group), cursor)
 
   def __AllocateIds(self, conn, prefix, size):
     """Allocates IDs.
@@ -816,10 +814,9 @@ class DatastoreMySQLStub(apiproxy_stub.APIProxyStub):
     if size >= block_size:
       block_size = max(1000, size)
       cursor = conn.cursor()
-      cursor.execute('UPDATE IdSeq SET next_id = next_id + %s WHERE prefix = %s',(block_size, prefix))
+      self._ExecuteSQL('UPDATE IdSeq SET next_id = next_id + %s WHERE prefix = %s',(block_size, prefix), cursor)
       assert int(cursor.rowcount) == 1
-      cursor.execute('SELECT next_id FROM IdSeq WHERE prefix = %s LIMIT 1',
-                       (prefix,))
+      self._ExecuteSQL('SELECT next_id FROM IdSeq WHERE prefix = %s LIMIT 1',(prefix,),cursor)
       next_id = cursor.fetchone()[0] - block_size
 
     ret = next_id
@@ -841,7 +838,7 @@ class DatastoreMySQLStub(apiproxy_stub.APIProxyStub):
     """
     cursor = conn.cursor()
     lock_str = self.__app_id + '_' + entity_group
-    cursor.execute("SELECT GET_LOCK('%s', %i);" % (lock_str, timeout))
+    self._ExecuteSQL("SELECT GET_LOCK('%s', %i);" % (lock_str, timeout), None, cursor)
     conn.commit()
 
   def __ReleaseLockForEntityGroup(self, conn, entity_group=''):
@@ -853,7 +850,7 @@ class DatastoreMySQLStub(apiproxy_stub.APIProxyStub):
     """
     cursor = conn.cursor()
     lock_str = self.__app_id + '_' + entity_group
-    cursor.execute("SELECT RELEASE_LOCK('%s');" % lock_str)
+    self._ExecuteSQL("SELECT RELEASE_LOCK('%s');" % lock_str, None, cursor)
     conn.commit()
 
   @staticmethod
@@ -959,9 +956,7 @@ class DatastoreMySQLStub(apiproxy_stub.APIProxyStub):
         self.__ValidateAppId(key.app())
         prefix = self.__GetTablePrefix(key)
         cursor = conn.cursor()
-        cursor.execute(
-            'SELECT entity FROM %s_Entities WHERE __path__ = %%s'%prefix,
-            (self.__EncodeIndexPB(key.path()),))
+        self._ExecuteSQL('SELECT entity FROM %s_Entities WHERE __path__ = %%s'%prefix, (self.__EncodeIndexPB(key.path()),), cursor)
         group = get_response.add_entity()
         row = cursor.fetchone()
         if row:
@@ -1328,17 +1323,10 @@ class DatastoreMySQLStub(apiproxy_stub.APIProxyStub):
       query.set_offset(0)
     elif query.has_limit() and not query.has_offset():
       sql_stmt += ' LIMIT %i' % query.limit()
-
-    if self.__verbose:
-      logging.info("Executing statement '%s' with arguments %r",
-                   sql_stmt, [str(x) for x in params])
+    
     db_cursor = conn.cursor()
-    if self.__verbose:
-      start_time = time.time()
-    db_cursor.execute(sql_stmt, params)
-    if self.__verbose:
-      time_delta_ms = (time.time() - start_time) * 1000
-      logging.info("Statement execution time (ms): %s" % time_delta_ms)
+    self._ExecuteSQL(sql_stmt, params, db_cursor)
+
     cursor = QueryCursor(query, db_cursor)
     if query.has_compiled_cursor() and query.compiled_cursor().position_size():
       cursor.ResumeFromCompiledCursor(query.compiled_cursor())
@@ -1354,7 +1342,35 @@ class DatastoreMySQLStub(apiproxy_stub.APIProxyStub):
     self.__query_history[clone] = self.__query_history.get(clone, 0) + 1
 
     return cursor
-
+  
+  def _ExecuteSQL(self, sql_stmt, params=None, cursor=None):
+    if not cursor:
+      cursor = self.__connection.cursor()
+    
+    #start logging time
+    if self.__verbose:
+      start_time = time.time()
+    
+    #execute the statement
+    if isinstance(params,types.GeneratorType):
+      cursor.executemany(sql_stmt, params)
+    else:
+      cursor.execute(sql_stmt, params)
+    
+    #report the execution
+    if self.__verbose:
+      time_delta_ms = (time.time() - start_time) * 1000
+      if params:
+        if isinstance(params,types.GeneratorType):
+          params = [[str(x) for x in row_params] for row_params in params]
+        else:
+          params = [str(x) for x in params]
+      time_delta_health = "!" if time_delta_ms > 10 else "."
+      if time_delta_health == "!": #cheap way to filter by high latency db requests
+        logging.info("SQL (%s) (%s, %s exec, %d rows): %s w/ arguments %r"%(time_delta_health, time.time(), time_delta_ms, cursor.rowcount, sql_stmt, params))
+    
+    return cursor
+  
   def _Dynamic_RunQuery(self, query, query_result):
     conn = self.__GetConnection(query.transaction())
     try:
@@ -1506,7 +1522,7 @@ class DatastoreMySQLStub(apiproxy_stub.APIProxyStub):
         sql_stmt = ('SELECT kind FROM %s_Entities %s GROUP BY kind'
                     % (prefix, self.__CreateFilterString(filters, params)))
       cursor = conn.cursor()
-      cursor.execute(sql_stmt, params)
+      self._ExecuteSQL(sql_stmt, params, cursor)
 
       kind = None
       current_name = None
