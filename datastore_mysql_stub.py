@@ -96,16 +96,19 @@ _ORDER_MAP = {
 _CORE_SCHEMA = ["""
 CREATE TABLE IF NOT EXISTS Apps (
   app_id VARCHAR(255) NOT NULL PRIMARY KEY,
-  indexes VARCHAR(255));
+  indexes VARCHAR(255)
+) ENGINE=InnoDB;
 ""","""
 CREATE TABLE IF NOT EXISTS Namespaces (
   app_id VARCHAR(255) NOT NULL,
   name_space VARCHAR(255) NOT NULL,
-  PRIMARY KEY (app_id, name_space));
+  PRIMARY KEY (app_id, name_space)
+) ENGINE=InnoDB;
 ""","""
 CREATE TABLE IF NOT EXISTS IdSeq (
   prefix VARCHAR(255) NOT NULL PRIMARY KEY,
-  next_id INT(100) NOT NULL);
+  next_id INT(100) NOT NULL
+) ENGINE=InnoDB;
 """]
 
 _NAMESPACE_SCHEMA = ["""
@@ -114,9 +117,7 @@ CREATE TABLE `%(prefix)s_Entities` (
   `kind` varchar(255) NOT NULL,
   `entity` longblob NOT NULL,
   PRIMARY KEY (`__path__`),
-  KEY `i1` (`kind`),
-  KEY `i2` (`__path__`)
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB;
 ""","""
 CREATE TABLE `%(prefix)s_EntitiesByProperty` (
     `kind` varchar(255) NOT NULL,
@@ -126,11 +127,9 @@ CREATE TABLE `%(prefix)s_EntitiesByProperty` (
     `hashed_index` char(32) NOT NULL,
     PRIMARY KEY (`hashed_index`),
     INDEX(value(32)),
-    KEY `i1` (`kind`),
-    KEY `i2` (`kind`,`name`),
-    KEY `i3` (`__path__`),
-    KEY `i4` (`hashed_index`)
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+    KEY `i1` (`kind`,`name`),
+    KEY `i2` (`__path__`),
+) ENGINE=InnoDB;
 ""","""
 INSERT IGNORE INTO Apps (app_id) VALUES ('%(app_id)s');
 ""","""
