@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 #
 # Copyright 2007 Google Inc.
+# Copyright 2010 Tobias Rodaebel, Jean-Marc Skopek (Top Hat Monocle)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,8 +21,8 @@
 Entities are stored in a MySQL database in a similar fashion to the production
 datastore.
 
-Transactions are serialized through __tx_lock. Each transaction acquires it
-when it begins and releases it when it commits or rolls back.
+Substantial portions of this code are taken from Nick Johnson's SQLite
+Datastore stub.
 """
 
 
